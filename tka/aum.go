@@ -212,7 +212,7 @@ func (a *AUM) StaticValidate() error {
 }
 
 // Serialize returns the given AUM in a serialized format.
-func (a *AUM) Serialize() []byte {
+func (a *AUM) Serialize() tkatype.MarshaledAUM {
 	// Why CBOR and not something like JSON?
 	//
 	// The main function of an AUM is to carry signed data. Signatures are
