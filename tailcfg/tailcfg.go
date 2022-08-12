@@ -7,6 +7,7 @@ package tailcfg
 //go:generate go run tailscale.com/cmd/viewer --type=User,Node,Hostinfo,NetInfo,Login,DNSConfig,RegisterResponse,DERPRegion,DERPMap,DERPNode,SSHRule,SSHPrincipal --clonefunc
 
 import (
+	"bytes"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -19,6 +20,7 @@ import (
 	"tailscale.com/types/key"
 	"tailscale.com/types/opt"
 	"tailscale.com/types/structs"
+	"tailscale.com/types/tkatype"
 	"tailscale.com/util/dnsname"
 )
 
@@ -73,7 +75,8 @@ type CapabilityVersion int
 //	36: 2022-08-02: added PeersChangedPatch.{Key,DiscoKey,Online,LastSeen,KeyExpiry,Capabilities}
 //	37: 2022-08-09: added Debug.{SetForceBackgroundSTUN,SetRandomizeClientPort}; Debug are sticky
 //	38: 2022-08-11: added PingRequest.URLIsNoise
-const CurrentCapabilityVersion CapabilityVersion = 38
+//	39: 2022-08-12: added Node.KeySignature, PeersChangedPatch.KeySignature
+const CurrentCapabilityVersion CapabilityVersion = 39
 
 type StableID string
 
@@ -171,16 +174,17 @@ type Node struct {
 	// Sharer, if non-zero, is the user who shared this node, if different than User.
 	Sharer UserID `json:",omitempty"`
 
-	Key        key.NodePublic
-	KeyExpiry  time.Time
-	Machine    key.MachinePublic
-	DiscoKey   key.DiscoPublic
-	Addresses  []netip.Prefix // IP addresses of this Node directly
-	AllowedIPs []netip.Prefix // range of IP addresses to route to this node
-	Endpoints  []string       `json:",omitempty"` // IP+port (public via STUN, and local LANs)
-	DERP       string         `json:",omitempty"` // DERP-in-IP:port ("127.3.3.40:N") endpoint
-	Hostinfo   HostinfoView
-	Created    time.Time
+	Key          key.NodePublic
+	KeyExpiry    time.Time
+	KeySignature tkatype.MarshaledSignature `json:",omitempty"`
+	Machine      key.MachinePublic
+	DiscoKey     key.DiscoPublic
+	Addresses    []netip.Prefix // IP addresses of this Node directly
+	AllowedIPs   []netip.Prefix // range of IP addresses to route to this node
+	Endpoints    []string       `json:",omitempty"` // IP+port (public via STUN, and local LANs)
+	DERP         string         `json:",omitempty"` // DERP-in-IP:port ("127.3.3.40:N") endpoint
+	Hostinfo     HostinfoView
+	Created      time.Time
 
 	// Tags are the list of ACL tags applied to this node.
 	// Tags take the form of `tag:<value>` where value starts
@@ -1438,6 +1442,7 @@ func (n *Node) Equal(n2 *Node) bool {
 		n.Sharer == n2.Sharer &&
 		n.Key == n2.Key &&
 		n.KeyExpiry.Equal(n2.KeyExpiry) &&
+		bytes.Equal(n.KeySignature, n2.KeySignature) &&
 		n.Machine == n2.Machine &&
 		n.DiscoKey == n2.DiscoKey &&
 		eqBoolPtr(n.Online, n2.Online) &&
@@ -1796,6 +1801,10 @@ type PeerChange struct {
 
 	// Key, if non-nil, means that the NodeID's wireguard public key changed.
 	Key *key.NodePublic `json:",omitempty"`
+
+	// KeySignature, if non-nil, means that the signature of the wireguard
+	// public key has changed.
+	KeySignature tkatype.MarshaledSignature `json:",omitempty"`
 
 	// DiscoKey, if non-nil, means that the NodeID's discokey changed.
 	DiscoKey *key.DiscoPublic `json:",omitempty"`
