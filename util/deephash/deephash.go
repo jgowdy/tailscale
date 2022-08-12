@@ -31,7 +31,7 @@ import (
 	"time"
 	"unsafe"
 
-	"tailscale.com/util/sha256x"
+	hashx "tailscale.com/util/sha256x"
 )
 
 // There is much overlap between the theory of serialization and hashing.
@@ -79,7 +79,7 @@ const scratchSize = 128
 // hasher is reusable state for hashing a value.
 // Get one via hasherPool.
 type hasher struct {
-	sha256x.Hash
+	hashx.Block512
 	scratch    [scratchSize]byte
 	visitStack visitStack
 }
@@ -106,6 +106,13 @@ var (
 
 func initSeed() {
 	seed = uint64(time.Now().UnixNano())
+}
+
+func (h *hasher) Reset() {
+	if h.Block512.Hash == nil {
+		h.Block512.Hash = sha256.New()
+	}
+	h.Block512.Reset()
 }
 
 func (h *hasher) sum() (s Sum) {
