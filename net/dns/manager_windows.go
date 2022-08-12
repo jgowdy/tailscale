@@ -219,22 +219,46 @@ func (m windowsManager) SetDNS(cfg OSConfig) error {
 	if err := m.disableDynamicUpdates(); err != nil {
 		m.logf("disableDynamicUpdates error: %v\n", err)
 	}
-
+	if m.nrptDB == nil && len(cfg.MatchDomains) > 0 {
+		return errors.New("cannot set per-domain resolvers on Windows 7")
+	}
 	if len(cfg.MatchDomains) == 0 {
 		if err := m.setSplitDNS(nil, nil); err != nil {
 			return err
 		}
-		if err := m.setPrimaryDNS(cfg.Nameservers, cfg.SearchDomains); err != nil {
-			return err
-		}
-	} else if m.nrptDB == nil {
-		return errors.New("cannot set per-domain resolvers on Windows 7")
 	} else {
 		if err := m.setSplitDNS(cfg.Nameservers, cfg.MatchDomains); err != nil {
 			return err
 		}
-		// Still set search domains on the interface, since NRPT only
-		// handles query routing and not search domain expansion.
+	}
+
+	isSmartNameResolutionDisabled := func() bool {
+		key, err := m.openKey(`SOFTWARE\Policies\Microsoft\Windows NT\DNSClient`)
+		if err != nil {
+			return false
+		}
+		defer key.Close()
+		val, _, err := key.GetIntegerValue("DisableSmartNameResolution")
+		return err == nil && val == 1
+	}()
+
+	// We still need to set both the search domains and nameservers on the
+	// interface. NRPT only handles query routing and not search domain
+	// expansion, and if we do not set the nameservers on the interface our
+	// searches are not prioritized when compared to the primary resolver.
+	//
+	// However, if SmartNameResolution is enabled, setting the nameservers
+	// introduces a large amount of latency, as it waits for MDNS sent over
+	// the Tailscale interface queries to timeout. So do not set nameservers
+	// in that case.
+	//
+	// When cfg.MatchDomains is empty, we are in override DNS mode and we need
+	// to be the primary resolver.
+	if len(cfg.MatchDomains) == 0 || isSmartNameResolutionDisabled {
+		if err := m.setPrimaryDNS(cfg.Nameservers, cfg.SearchDomains); err != nil {
+			return err
+		}
+	} else {
 		if err := m.setPrimaryDNS(nil, cfg.SearchDomains); err != nil {
 			return err
 		}
