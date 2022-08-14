@@ -188,10 +188,9 @@ func HasherForType[T any]() func(T) Sum {
 }
 
 // Update sets last to the hash of v and reports whether its value changed.
-func Update(last *Sum, v ...any) (changed bool) {
+func Update(last *Sum, v any) (changed bool) {
 	sum := Hash(v)
 	if sum == *last {
-		// unchanged.
 		return false
 	}
 	*last = sum
